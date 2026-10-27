@@ -1,0 +1,56 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`junit reporter > emits one testcase per case with failures and escaped attributes 1`] = `
+"<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="agentcheck" tests="3" failures="1" errors="0" time="0.650">
+  <testsuite name="support" tests="3" failures="1" errors="0" skipped="0" time="0.300" timestamp="2026-03-01T12:00:00.000Z" file="/repo/evals/support.eval.yaml">
+    <testcase classname="support" name="order status" time="0.050">
+      <system-out>pass rate 1/1 (100%), threshold 100%</system-out>
+    </testcase>
+    <testcase classname="support" name="refund &lt;policy&gt; &amp; &quot;tone&quot;" time="0.050">
+      <failure message="pass rate 0/1 (0%), threshold 100%, judge 2.00" type="AssertionFailure">not_contains "cannot": output contains "cannot"
+llm_judge &gt;= 4: Offers a refund politely: score 2/5, threshold 4
+  judge: The agent refused instead of offering a refund.
+
+output:
+Sorry, I cannot help with refunds.</failure>
+      <system-out>pass rate 0/1 (0%), threshold 100%, judge 2.00</system-out>
+    </testcase>
+    <testcase classname="support" name="greeting" time="0.200">
+      <system-out>pass rate 2/4 (50%), threshold 50%, flaky</system-out>
+    </testcase>
+  </testsuite>
+</testsuites>
+"
+`;
+
+exports[`markdown reporter > renders a summary table with escaped cells and failure details 1`] = `
+"## agentcheck: failed (2/3 cases)
+
+**2 passed** · **1 failed** · **1 flaky** · 3/6 attempts · cost $0.0273 (+$0.0039 judge) · latency p50 50ms / p95 50ms · 650ms
+
+### support
+
+\`claude-sonnet-5-5\`
+
+| | Case | Pass rate | Judge | Turns | Cost | Latency p50 / p95 |
+| --- | --- | --- | --- | --- | --- | --- |
+| pass | order status | 1/1 (100%) | – | 2.0 | $0.0078 | 50ms / 50ms |
+| **FAIL** | refund &lt;policy&gt; &amp; "tone" | 0/1 (0%) | 2.0 | 1.0 | $0.0039 | 50ms / 50ms |
+| flaky | greeting | 2/4 (50%) | – | 1.0 | $0.0156 | 50ms / 50ms |
+
+<details><summary>Failure details (1)</summary>
+
+#### refund &lt;policy&gt; &amp; "tone"
+
+- \`not_contains "cannot"\`: output contains "cannot"
+- \`llm_judge >= 4: Offers a refund politely\`: score 2/5, threshold 4
+  > The agent refused instead of offering a refund.
+
+\`\`\`text
+Sorry, I cannot help with refunds.
+\`\`\`
+
+</details>
+"
+`;
