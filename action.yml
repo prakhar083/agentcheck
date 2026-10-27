@@ -1,0 +1,96 @@
+name: agentcheck
+description: Run agentcheck eval suites against your LLM agent and publish the results to the job summary.
+author: Prakhar Vijay
+branding:
+  icon: check-circle
+  color: green
+
+inputs:
+  suites:
+    description: Space-separated suite files or glob patterns.
+    required: false
+    default: "**/*.eval.{yaml,yml}"
+  baseline:
+    description: Path to a previous JSON report. Regressions against it fail the step.
+    required: false
+    default: ""
+  args:
+    description: Extra arguments for `agentcheck run` (e.g. `--concurrency 8 --repeat 3`).
+    required: false
+    default: ""
+  working-directory:
+    description: Directory to run from; suite paths are relative to it.
+    required: false
+    default: "."
+  results-dir:
+    description: Where to write results.json, summary.md and junit.xml (relative to working-directory).
+    required: false
+    default: agentcheck-results
+  node-version:
+    description: Node.js version used to run agentcheck.
+    required: false
+    default: "22"
+
+outputs:
+  exit-code:
+    description: 0 if everything passed, 1 on failures or regressions, 2 on configuration errors.
+    value: ${{ steps.run.outputs.exit-code }}
+  results:
+    description: Path to the JSON report, usable as the next run's baseline.
+    value: ${{ steps.run.outputs.results }}
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v5
+      with:
+        node-version: ${{ inputs.node-version }}
+
+    - name: Build agentcheck
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: |
+        npm ci --no-audit --no-fund --loglevel=error
+        npm run build --silent
+
+    - name: Run agentcheck
+      id: run
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        AGENTCHECK_BIN: ${{ github.action_path }}/dist/cli.js
+        INPUT_SUITES: ${{ inputs.suites }}
+        INPUT_BASELINE: ${{ inputs.baseline }}
+        INPUT_ARGS: ${{ inputs.args }}
+        RESULTS_DIR: ${{ inputs.results-dir }}
+      run: |
+        set -uo pipefail
+        set -f # suite globs are expanded by agentcheck, not bash
+        read -r -a patterns <<< "$INPUT_SUITES"
+        read -r -a extra <<< "$INPUT_ARGS"
+        set +f
+
+        mkdir -p "$RESULTS_DIR"
+        cmd=(node "$AGENTCHECK_BIN" run "${patterns[@]}"
+          --json "$RESULTS_DIR/results.json"
+          --markdown "$RESULTS_DIR/summary.md"
+          --junit "$RESULTS_DIR/junit.xml")
+        if [ -n "$INPUT_BASELINE" ]; then
+          if [ -f "$INPUT_BASELINE" ]; then
+            cmd+=(--baseline "$INPUT_BASELINE")
+          else
+            echo "::warning::agentcheck baseline '$INPUT_BASELINE' not found; running without it"
+          fi
+        fi
+        # The ${arr[@]+...} form keeps bash 3.2 (macOS runners) happy with empty arrays under set -u.
+        cmd+=(${extra[@]+"${extra[@]}"})
+
+        "${cmd[@]}"
+        code=$?
+
+        if [ -f "$RESULTS_DIR/summary.md" ]; then
+          cat "$RESULTS_DIR/summary.md" >> "$GITHUB_STEP_SUMMARY"
+        fi
+        echo "exit-code=$code" >> "$GITHUB_OUTPUT"
+        echo "results=$(cd "$RESULTS_DIR" && pwd)/results.json" >> "$GITHUB_OUTPUT"
+        exit $code
