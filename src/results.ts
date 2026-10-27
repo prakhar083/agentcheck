@@ -1,4 +1,5 @@
 import type { AssertionResult } from "./assertions/index.js";
+import type { BaselineDiff } from "./baseline.js";
 import type { LatencyStats } from "./stats.js";
 import type { Message, StopReason, Usage } from "./types.js";
 
@@ -70,6 +71,7 @@ export interface RunReport {
   durationMs: number;
   summary: RunSummary;
   suites: SuiteResult[];
+  baseline?: BaselineDiff;
 }
 
 export function caseKey(c: Pick<CaseResult, "suite" | "name">): string {
