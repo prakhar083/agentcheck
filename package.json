@@ -1,0 +1,77 @@
+{
+  "name": "agentcheck",
+  "version": "0.1.0",
+  "description": "A test runner and eval harness for LLM agents: YAML suites, mocked tools, assertions, LLM-as-judge, and CI-friendly reports.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Prakhar Vijay",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/prakhar083/agentcheck.git"
+  },
+  "homepage": "https://github.com/prakhar083/agentcheck#readme",
+  "bugs": {
+    "url": "https://github.com/prakhar083/agentcheck/issues"
+  },
+  "keywords": [
+    "llm",
+    "agents",
+    "evals",
+    "eval-harness",
+    "testing",
+    "test-runner",
+    "llm-as-judge",
+    "tool-calling",
+    "anthropic",
+    "claude",
+    "openai",
+    "ci"
+  ],
+  "bin": {
+    "agentcheck": "dist/cli.js"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20.19"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "example": "npm run build && node dist/cli.js run \"examples/**/*.eval.yaml\"",
+    "prepublishOnly": "npm run typecheck && npm test && npm run build"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.3.0",
+    "ajv": "^8.20.0",
+    "commander": "^14.0.3",
+    "openai": "^6.49.0",
+    "picocolors": "^1.1.1",
+    "tinyglobby": "^0.2.17",
+    "yaml": "^2.9.1",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^20.19.43",
+    "eslint": "^10.13.0",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.72.1",
+    "vite": "^7.3.7",
+    "vitest": "^4.1.12"
+  }
+}
