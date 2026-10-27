@@ -24,16 +24,18 @@ export interface BaselineDiff {
 export interface CompareOptions {
   /** Minimum drop in mean judge score (1-5 scale) that counts as a regression. */
   scoreTolerance: number;
+  /** Set to false when only a subset of cases ran (e.g. --filter), so skipped cases aren't reported as removed. */
+  reportRemoved: boolean;
 }
 
-export const DEFAULT_COMPARE: CompareOptions = { scoreTolerance: 0.5 };
+export const DEFAULT_COMPARE: CompareOptions = { scoreTolerance: 0.5, reportRemoved: true };
 
 export async function loadBaseline(file: string): Promise<RunReport> {
   let data: unknown;
   try {
     data = JSON.parse(await readFile(file, "utf8"));
   } catch (err) {
-    throw new Error(`cannot read baseline ${file}: ${(err as Error).message}`);
+    throw new Error(`cannot read baseline ${file}: ${(err as Error).message}`, { cause: err });
   }
   const report = data as Partial<RunReport>;
   if (report.tool !== "agentcheck" || !Array.isArray(report.suites)) {
@@ -49,8 +51,9 @@ export function compareToBaseline(
   current: RunReport,
   baseline: RunReport,
   file: string,
-  opts: CompareOptions = DEFAULT_COMPARE,
+  options: Partial<CompareOptions> = {},
 ): BaselineDiff {
+  const opts = { ...DEFAULT_COMPARE, ...options };
   const before = indexCases(baseline);
   const after = indexCases(current);
   const diff: BaselineDiff = { file, regressions: [], improvements: [], added: [], removed: [] };
@@ -83,7 +86,9 @@ export function compareToBaseline(
       else if (delta >= opts.scoreTolerance) diff.improvements.push(change("score_gain", msg));
     }
   }
-  for (const key of before.keys()) if (!after.has(key)) diff.removed.push(key);
+  if (opts.reportRemoved) {
+    for (const key of before.keys()) if (!after.has(key)) diff.removed.push(key);
+  }
   return diff;
 }
 

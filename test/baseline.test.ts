@@ -43,6 +43,10 @@ describe("compareToBaseline", () => {
     expect(strict.improvements.some((r) => r.key.endsWith("stable") && r.kind === "score_gain")).toBe(true);
   });
 
+  it("can skip removed cases for partial runs", () => {
+    expect(compareToBaseline(after, before, "b.json", { reportRemoved: false }).removed).toEqual([]);
+  });
+
   it("returns an empty diff for identical runs", () => {
     const same = compareToBaseline(before, before, "b.json");
     expect(same).toEqual({ file: "b.json", regressions: [], improvements: [], added: [], removed: [] });
