@@ -1,0 +1,192 @@
+# Customer-support agent for a fictional outdoor-gear store.
+#
+# Runs offline against ./mock-agent.mjs, a scripted stand-in for a real model.
+# To run the same suite against Claude, replace the provider block with:
+#
+#   provider:
+#     type: anthropic
+#     model: claude-sonnet-5-5
+#
+# and export ANTHROPIC_API_KEY. Nothing else in the file changes.
+
+name: customer-support
+
+provider:
+  type: module
+  module: ./mock-agent.mjs
+  model: mock-support-agent
+
+# The mock model has no list price; price it like a mid-tier model so the
+# cost columns and max_cost_usd assertions have something to show.
+pricing:
+  mock-support-agent: { input: 2, output: 10 }
+
+system: |
+  You are the support agent for Acme Outfitters.
+  Policy:
+  - Always look up an order with lookup_order before discussing it.
+  - Delivered orders can be refunded in full within 30 days of delivery.
+  - Damaged items worth more than $500 must be escalated with escalate_to_human; never refund them yourself.
+  - Never refund more than the order total.
+  Be concise and polite.
+
+tools:
+  - name: lookup_order
+    description: Fetch an order by its ID.
+    input_schema:
+      type: object
+      properties:
+        order_id: { type: string, description: "Order ID such as A1001" }
+      required: [order_id]
+    responses:
+      - when: { order_id: A1001 }
+        response: { order_id: A1001, status: delivered, days_since_delivery: 12, total: 89.0, items: ["Trail Runner 2 (size 10)"] }
+      - when: { order_id: A1002 }
+        response: { order_id: A1002, status: in_transit, eta: "2026-03-14", total: 54.5, items: ["Merino Beanie"] }
+      - when: { order_id: A1003 }
+        response: { order_id: A1003, status: delivered, days_since_delivery: 45, total: 120.0, items: ["Rain Shell"] }
+      - when: { order_id: A1004 }
+        response: { order_id: A1004, status: delivered, days_since_delivery: 3, total: 1240.0, items: ["Ultralight Tent 2P"] }
+      - error: "order not found"
+
+  - name: issue_refund
+    description: Refund an order to the original payment method.
+    input_schema:
+      type: object
+      properties:
+        order_id: { type: string }
+        amount: { type: number }
+        reason: { type: string }
+      required: [order_id, amount, reason]
+    responses:
+      - when: { order_id: A1001 }
+        response: { refund_id: R-5521, status: approved }
+      - error: "refund rejected by payments service"
+
+  - name: escalate_to_human
+    description: Hand the conversation to a human specialist.
+    input_schema:
+      type: object
+      properties:
+        order_id: { type: string }
+        summary: { type: string }
+      required: [order_id, summary]
+    response: { ticket: T-881, queue: damaged-goods }
+
+defaults:
+  max_turns: 6
+
+cases:
+  - name: order status for an in-transit order
+    input: Hi, where is my order A1002?
+    assert:
+      - type: tool_called
+        name: lookup_order
+        args: { order_id: A1002 }
+        count: 1
+      - type: contains
+        value: in transit
+        ignore_case: true
+      - type: tool_not_called
+        name: issue_refund
+      - type: max_turns
+        value: 2
+
+  - name: refunds a damaged item inside the window
+    input: My order A1001 arrived with a torn sole. I'd like a refund please.
+    repeat: 3
+    assert:
+      - type: tool_sequence
+        names: [lookup_order, issue_refund]
+      - type: tool_called
+        name: issue_refund
+        args: { order_id: A1001, amount: 89 }
+        after: lookup_order
+      - type: contains
+        value: [R-5521, "$89.00"]
+      - type: max_cost_usd
+        value: 0.01
+      - type: llm_judge
+        rubric: |
+          The agent apologises for the damaged item, confirms the refund amount,
+          and gives the customer the refund ID.
+        threshold: 4
+
+  - name: declines a refund outside the 30-day window
+    input: I want to return order A1003, the jacket doesn't fit.
+    assert:
+      - type: tool_not_called
+        name: issue_refund
+      - type: contains
+        value: 30 days
+      - type: llm_judge
+        rubric: The agent declines the refund, cites the 30-day policy, and stays polite.
+        threshold: 4
+
+  - name: escalates high-value damage instead of refunding
+    input: The tent from order A1004 arrived with a broken pole. Refund it now.
+    assert:
+      - type: tool_called
+        name: escalate_to_human
+        args: { order_id: A1004 }
+      - type: tool_not_called
+        name: issue_refund
+      - type: contains
+        value: T-881
+
+  - name: unknown order asks the customer to double-check
+    input: Can you check on order Z9999?
+    assert:
+      - type: tool_called
+        name: lookup_order
+        count: 1
+      - type: regex
+        pattern: double-check|verify
+        flags: i
+      - type: not_contains
+        value: ["in transit", delivered]
+        ignore_case: true
+
+  - name: structured order summary
+    system: |
+      You are an order-summary service. Look up the order, then reply with only a
+      JSON object with keys order_id, status and total. No prose.
+    input: Summarise order A1001.
+    tools:
+      # Case-level tools replace suite tools with the same name.
+      - name: lookup_order
+        description: Fetch an order by its ID.
+        input_schema:
+          type: object
+          properties: { order_id: { type: string } }
+          required: [order_id]
+        response: { order_id: A1001, status: delivered, total: 89.0 }
+    assert:
+      - type: json_schema
+        schema:
+          type: object
+          required: [order_id, status, total]
+          additionalProperties: false
+          properties:
+            order_id: { type: string, pattern: "^A\\d{4}$" }
+            status: { enum: [processing, in_transit, delivered] }
+            total: { type: number, minimum: 0 }
+
+  # The mock deliberately drops the refund ID once every four answers on this
+  # path, standing in for sampling variance in a real model. With
+  # pass_threshold 0.75 the case passes but is reported as flaky.
+  - name: follow-up on refund status
+    messages:
+      - role: user
+        content: My order A1001 arrived damaged, can I get a refund?
+      - role: assistant
+        content: I'm sorry about that. I've issued a full refund of $89.00 (refund ID R-5521).
+      - role: user
+        content: Thanks. What's the status of my refund?
+    repeat: 4
+    pass_threshold: 0.75
+    assert:
+      - type: contains
+        value: R-5521
+      - type: tool_not_called
+        name: issue_refund
