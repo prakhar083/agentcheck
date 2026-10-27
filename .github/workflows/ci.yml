@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Node ${{ matrix.node }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [20, 22]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+      - name: Run the example suite
+        run: node dist/cli.js run "examples/**/*.eval.yaml"
+
+  action:
+    name: GitHub Action
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Run agentcheck via the composite action
+        id: agentcheck
+        uses: ./
+        with:
+          suites: examples/**/*.eval.yaml
+      - name: Check outputs
+        run: |
+          test "${{ steps.agentcheck.outputs.exit-code }}" = "0"
+          test -f "${{ steps.agentcheck.outputs.results }}"
